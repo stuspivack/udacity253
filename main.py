@@ -23,6 +23,7 @@ import hashlib
 import hmac
 import string
 import random
+import json
 
 secret = 'hunter2'
 
@@ -201,12 +202,34 @@ class LogoutPage(Handler):
         self.response.headers.add_header('Set-Cookie', 'userId=; Path=/')
         self.redirect('/signup')
 
+class MainJsonPage(Handler):
+    def get(self):
+        self.response.headers.add_header('Content-Type', 'application/json; charset: UTF-8')
+        postList = []
+        blogPosts = Blog.all()
+        for blogPost in blogPosts:
+            postList.append({'content': blogPost.body, 'created': blogPost.created.strftime("%b %d, %Y"), 'subject': blogPost.title})
+        blogsJson = json.dumps(postList)
+        self.response.out.write(blogsJson)
+
+class IndividualJsonPage(Handler):
+    def get(self, postIdstr):
+        postId = int(postIdstr)
+        blogPost = Blog.get_by_id(postId)
+        postDict = {'content': blogPost.body, 'created': blogPost.created.strftime("%b %d, %Y"), 'subject': blogPost.title}
+        self.response.headers.add_header('Content-Type', 'application/json; charset: UTF-8')
+        blogJson = json.dumps(postDict)
+        self.response.out.write(blogJson)
+
+
 app = webapp2.WSGIApplication([(r'/', MainPage),
                                (r'/newpost', NewPost),
                                (r'/(\d+)', Permalink),
                                (r'/signup', Signup),
                                (r'/welcome', WelcomePage),
                                (r'/login', LoginPage),
-                               (r'/logout', LogoutPage)],
+                               (r'/logout', LogoutPage),
+                               (r'/\.json', MainJsonPage),
+                               (r'/(\d+)\.json', IndividualJsonPage)],
                               debug=True)
 
