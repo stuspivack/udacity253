@@ -18,12 +18,14 @@ import os
 import webapp2
 import jinja2
 from google.appengine.ext import db
+from google.appengine.api import memcache
 import re
 import hashlib
 import hmac
 import string
 import random
 import json
+from datetime import datetime
 
 secret = 'hunter2'
 
@@ -66,10 +68,20 @@ class Handler(webapp2.RequestHandler):
     def render(self, template, **kw):
         self.write(self.render_str(template, **kw))
 
+t = datetime.now()
+ts = {}
+
 class MainPage(Handler):
     def render_front(self):
-        blogPosts = db.GqlQuery("SELECT * FROM Blog ORDER BY created DESC")
-        self.render("front.html", blogPosts = blogPosts)
+        global t
+        blogPosts = memcache.get("blogPosts")
+        if blogPosts == None:
+            blogPosts = db.GqlQuery("SELECT * FROM Blog ORDER BY created DESC LIMIT 10")
+            t = datetime.now()
+            memcache.set("blogPosts", blogPosts)
+        secs = (datetime.now() - t).seconds
+        cacheAgeMessage = "Queried " + str(secs) + " seconds ago"
+        self.render("front.html", blogPosts = blogPosts, cacheAgeMessage = cacheAgeMessage)
     def get(self):
         self.render_front()
 
@@ -78,6 +90,7 @@ class NewPost(Handler):
         self.render("newpost.html")
 
     def post(self):
+        global t
         title = self.request.get("subject")
         body = self.request.get("content")
 
@@ -85,6 +98,9 @@ class NewPost(Handler):
             blogPost = Blog(title = title, body = body)
             blogPost.put()
             postId = blogPost.key().id()
+            blogPosts = db.GqlQuery("SELECT * FROM Blog ORDER BY created DESC LIMIT 10")
+            t = datetime.now()
+            memcache.set("blogPosts", blogPosts)
             self.redirect("/" + str(postId))
         else:
             error = ("Please enter a title and a body.")
@@ -92,9 +108,16 @@ class NewPost(Handler):
 
 class Permalink(Handler):
     def get(self, postIdstr):
-        postId = int(postIdstr)
-        blogPost = Blog.get_by_id(postId)
-        self.render('permalink.html', title = blogPost.title, body = blogPost.body)
+        global ts
+        blogPost = memcache.get(postIdstr)
+        if blogPost == None:
+            postId = int(postIdstr)
+            blogPost = Blog.get_by_id(postId)
+            ts[postIdstr] = datetime.now()
+            memcache.set(postIdstr, blogPost)
+        secs = (datetime.now() - ts.get(postIdstr, datetime.now())).seconds
+        cacheAgeMessage = "Queried " + str(secs) + " seconds ago"
+        self.render('permalink.html', title = blogPost.title, body = blogPost.body, cacheAgeMessage = cacheAgeMessage)
 
 def hmac_str(string):
     return hmac.new(secret, string).hexdigest()
@@ -221,6 +244,15 @@ class IndividualJsonPage(Handler):
         blogJson = json.dumps(postDict)
         self.response.out.write(blogJson)
 
+class FlushPage(Handler):
+    def get(self):
+        global ts
+        memcache.delete('blogPosts')
+        for key in ts.keys():
+            memcache.delete(key)
+        ts = {}
+        self.redirect("/")
+
 
 app = webapp2.WSGIApplication([(r'/', MainPage),
                                (r'/newpost', NewPost),
@@ -230,6 +262,7 @@ app = webapp2.WSGIApplication([(r'/', MainPage),
                                (r'/login', LoginPage),
                                (r'/logout', LogoutPage),
                                (r'/\.json', MainJsonPage),
-                               (r'/(\d+)\.json', IndividualJsonPage)],
+                               (r'/(\d+)\.json', IndividualJsonPage),
+                               (r'/flush', FlushPage)],
                               debug=True)
 
