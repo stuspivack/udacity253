@@ -24,7 +24,6 @@ import hashlib
 import hmac
 import string
 import random
-import json
 from datetime import datetime
 
 secret = 'hunter2'
@@ -49,10 +48,12 @@ def blank(text):
 template_dir = os.path.join(os.path.dirname(__file__), 'templates')
 jinja_env = jinja2.Environment(loader = jinja2.FileSystemLoader(template_dir), autoescape=True)
 
-class Blog(db.Model):
+class TopicPage(db.Model):
     title = db.StringProperty(required = True)
-    body = db.TextProperty(required = True)
+    content = db.TextProperty(required = True)
     created = db.DateTimeProperty(auto_now_add = True)
+    snippet = db.StringProperty(required = True)
+    ver = db.IntegerProperty(required = True)
 
 class Users(db.Model):
     username = db.StringProperty(required = True)
@@ -67,57 +68,6 @@ class Handler(webapp2.RequestHandler):
         return t.render(params)
     def render(self, template, **kw):
         self.write(self.render_str(template, **kw))
-
-t = datetime.now()
-ts = {}
-
-class MainPage(Handler):
-    def render_front(self):
-        global t
-        blogPosts = memcache.get("blogPosts")
-        if blogPosts == None:
-            blogPosts = db.GqlQuery("SELECT * FROM Blog ORDER BY created DESC LIMIT 10")
-            t = datetime.now()
-            memcache.set("blogPosts", blogPosts)
-        secs = (datetime.now() - t).seconds
-        cacheAgeMessage = "Queried " + str(secs) + " seconds ago"
-        self.render("front.html", blogPosts = blogPosts, cacheAgeMessage = cacheAgeMessage)
-    def get(self):
-        self.render_front()
-
-class NewPost(Handler):
-    def get(self):
-        self.render("newpost.html")
-
-    def post(self):
-        global t
-        title = self.request.get("subject")
-        body = self.request.get("content")
-
-        if body and title:
-            blogPost = Blog(title = title, body = body)
-            blogPost.put()
-            postId = blogPost.key().id()
-            blogPosts = db.GqlQuery("SELECT * FROM Blog ORDER BY created DESC LIMIT 10")
-            t = datetime.now()
-            memcache.set("blogPosts", blogPosts)
-            self.redirect("/" + str(postId))
-        else:
-            error = ("Please enter a title and a body.")
-            self.render("newpost.html", title= title, body = body, error = error)
-
-class Permalink(Handler):
-    def get(self, postIdstr):
-        global ts
-        blogPost = memcache.get(postIdstr)
-        if blogPost == None:
-            postId = int(postIdstr)
-            blogPost = Blog.get_by_id(postId)
-            ts[postIdstr] = datetime.now()
-            memcache.set(postIdstr, blogPost)
-        secs = (datetime.now() - ts.get(postIdstr, datetime.now())).seconds
-        cacheAgeMessage = "Queried " + str(secs) + " seconds ago"
-        self.render('permalink.html', title = blogPost.title, body = blogPost.body, cacheAgeMessage = cacheAgeMessage)
 
 def hmac_str(string):
     return hmac.new(secret, string).hexdigest()
@@ -194,17 +144,6 @@ class Signup(Handler):
             self.render('signup.html', user = user, email = email, userError = userError, passError = passError,
                         matchError = matchError, emailError = emailError)
 
-class WelcomePage(Handler):
-    def get(self):
-        hashedId = self.request.cookies.get('userId')
-        userIdStr = check_secure_val(hashedId)
-        if check_secure_val(hashedId):
-            userId = int(userIdStr)
-            aUser = Users.get_by_id(userId)
-            self.render('welcome.html', user = aUser.username)
-        else:
-            self.redirect('/signup')
-
 class LoginPage(Handler):
     def get(self):
         self.render('login.html')
@@ -212,6 +151,7 @@ class LoginPage(Handler):
         user = self.request.get('username')
         password = self.request.get('password')
         thisUser = Users.all().filter('username =', user).get()
+        # there are get parameters.
         if thisUser:
             if valid_pw(user, password, thisUser.password):
                 userId = str(thisUser.key().id())
@@ -225,44 +165,84 @@ class LogoutPage(Handler):
         self.response.headers.add_header('Set-Cookie', 'userId=; Path=/')
         self.redirect('/signup')
 
-class MainJsonPage(Handler):
-    def get(self):
-        self.response.headers.add_header('Content-Type', 'application/json; charset: UTF-8')
-        postList = []
-        blogPosts = Blog.all()
-        for blogPost in blogPosts:
-            postList.append({'content': blogPost.body, 'created': blogPost.created.strftime("%b %d, %Y"), 'subject': blogPost.title})
-        blogsJson = json.dumps(postList)
-        self.response.out.write(blogsJson)
+class WikiPage(Handler):
+	# checks cookie, gets topicName from url
+    # checks get parameters for version info and acts accordingly
+	# uses wikiLOut.html if logged out
+	# uses wikiLin.html if logged in
+	# passes topicName and topicArticle in both cases
+    def get(self, topicName):
+        # pageVersions = TopicPage.all().filter('title =', topicName).get()
+        # hashedId = self.request.cookies.get('userId')
+        # userIdStr = check_secure_val(hashedId)
+        # if check_secure_val(hashedId):
+        #     userId = int(userIdStr)
+        #     aUser = Users.get_by_id(userId)
+        #     self.render('wikiLin.html', user = aUser.username, topicName = )
+        # else:
+        #     self.redirect('/signup')
+        pass
 
-class IndividualJsonPage(Handler):
-    def get(self, postIdstr):
-        postId = int(postIdstr)
-        blogPost = Blog.get_by_id(postId)
-        postDict = {'content': blogPost.body, 'created': blogPost.created.strftime("%b %d, %Y"), 'subject': blogPost.title}
-        self.response.headers.add_header('Content-Type', 'application/json; charset: UTF-8')
-        blogJson = json.dumps(postDict)
-        self.response.out.write(blogJson)
+class HistoryPage(Handler):
+	# get topicName from url, checks cookie
+	# uses historyLIn.html if logged in
+	# uses historyLOut.html if logged out
+	# pass topicName
+	# pass all the versions to be looped
+	pass
 
-class FlushPage(Handler):
-    def get(self):
-        global ts
-        memcache.delete('blogPosts')
-        for key in ts.keys():
-            memcache.delete(key)
-        ts = {}
-        self.redirect("/")
+class EditPage(Handler):
+	# get topicName from url
+	# check cookie, redirect to WikiPage view as needed
+    #checks for get parameters with version info and acts accordingly
+	# pass topicName to editWiki.html
+	# populate textarea with topicArticle
+    #accepts edited page and adds it to database with
+    #   title and content from the form
+    #   created, courtesy of GAE and
+    # snippet and ver, computed here
+    def get(self, topicName):
+        hashedId = self.request.cookies.get('userId')
+        userIdStr = check_secure_val(hashedId)
+        if check_secure_val(hashedId):
+            ver = self.request.get('ver')
+            if ver:
+                topicPages = TopicPage.all().filter('ver =', ver).get()
+                topicArticle = topicPages.content
+            else:
+                topicPages = TopicPage.all().order('-created').get()
+                if topicPages:
+                    topicArticle = topicPages.content
+                else:
+                    topicArticle = ''
+            userId = int(userIdStr)
+            aUser = Users.get_by_id(userId)
+            self.render('editWiki.html', user = aUser.username, topicName = topicName[1:], topicArticle = topicArticle)
+        elif topicPages:
+            self.redirect('/' + topicName[1:])
+        else:
+            self.redirect('/login?ref=' + topicName[1:])
+
+    def post(self):
+        hashedId = self.request.cookies.get('userId')
+        userIdStr = check_secure_val(hashedId)
+        topicName = self.request.get('title')
+        if check_secure_val(hashedId):
+            topicArticle = self.request.get('content')
+            topicPages = TopicPage.all().filter('ver =', ver).get()
+            newVersion = TopicPage(title = topicName, ver= ver, snippet = snippet, content = topicArticle)
+        else:
+            self.redirect('/login?ref=' + topicName[1:])
 
 
-app = webapp2.WSGIApplication([(r'/', MainPage),
-                               (r'/newpost', NewPost),
-                               (r'/(\d+)', Permalink),
-                               (r'/signup', Signup),
-                               (r'/welcome', WelcomePage),
-                               (r'/login', LoginPage),
-                               (r'/logout', LogoutPage),
-                               (r'/\.json', MainJsonPage),
-                               (r'/(\d+)\.json', IndividualJsonPage),
-                               (r'/flush', FlushPage)],
+
+
+PAGE_RE = r'(/(?:[a-zA-Z0-9_-]+/?)*)'
+app = webapp2.WSGIApplication([('/signup', Signup),
+                               ('/login', LoginPage),
+                               ('/logout', LogoutPage),
+                               ('/_edit' + PAGE_RE, EditPage),
+                               ('/_history' + PAGE_RE, HistoryPage),
+                               (PAGE_RE, WikiPage),
+                               ],
                               debug=True)
-

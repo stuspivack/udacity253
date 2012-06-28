@@ -1,0 +1,22 @@
+<html>
+<head>
+
+</head>
+<body>
+	<a href='/logout?ref={{topicName}}'>logout</a>
+	<a href='/{{topicName}}'>view</a>
+	<a href='/_edit/{{topicName}}'>edit</a>
+	<hr>
+	{{topicName}}
+	{% for version in versions %}
+    <div>
+        <div>{{version.created}}</div>
+        <div>{{version.snippet}}</div>
+        <!-- create the view link from the topicName -->
+        <div><a href="/{{topicName}}?ver={{version.ver}}">view</a></div>
+        <!-- create an edit link from the topicName -->
+        <div><a href="/_edit/{{topicName}}?ver={{version.ver}}">edit</a> </div>
+    </div>
+    {% endfor %}
+</body>
+</html>
