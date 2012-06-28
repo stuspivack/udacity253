@@ -207,14 +207,13 @@ class EditPage(Handler):
         if check_secure_val(hashedId):
             ver = self.request.get('ver')
             if ver:
-                topicPages = TopicPage.all().filter('ver =', ver).get()
+                topicPages = TopicPage.all().filter('ver =', ver,' AND title =', topicName).get()
+            else:
+                topicPages = TopicPage.all().filter('title =', topicName).order('-created').get()
+            if topicPages:
                 topicArticle = topicPages.content
             else:
-                topicPages = TopicPage.all().order('-created').get()
-                if topicPages:
-                    topicArticle = topicPages.content
-                else:
-                    topicArticle = ''
+                topicArticle = ''
             userId = int(userIdStr)
             aUser = Users.get_by_id(userId)
             self.render('editWiki.html', user = aUser.username, topicName = topicName[1:], topicArticle = topicArticle)
@@ -223,14 +222,18 @@ class EditPage(Handler):
         else:
             self.redirect('/login?ref=' + topicName[1:])
 
-    def post(self):
+    def post(self, topicName):
         hashedId = self.request.cookies.get('userId')
         userIdStr = check_secure_val(hashedId)
-        topicName = self.request.get('title')
         if check_secure_val(hashedId):
             topicArticle = self.request.get('content')
-            topicPages = TopicPage.all().filter('ver =', ver).get()
+            topicPages = TopicPage.all().filter('title =', topicName)
+            topicList = list(topicPages)
+            ver = len(topicList)
+            snippet = topicArticle[:100]
             newVersion = TopicPage(title = topicName, ver= ver, snippet = snippet, content = topicArticle)
+            newVersion.put()
+            self.redirect('/_edit' + topicName)
         else:
             self.redirect('/login?ref=' + topicName[1:])
 
