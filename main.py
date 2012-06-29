@@ -188,10 +188,12 @@ class WikiPage(Handler):
             hashedId = self.request.cookies.get('userId')
             userIdStr = check_secure_val(hashedId)
             topicName = curVersion.title
+            topicArticle = curVersion.content
+            topicArticle = topicArticle.replace('\n', '<br>')
             if check_secure_val(hashedId):
                 userId = int(userIdStr)
                 aUser = Users.get_by_id(userId)
-                self.render('wikiLIn.html', user = aUser.username, topicName = topicName[1:], topicArticle = curVersion.content)
+                self.render('wikiLIn.html', user = aUser.username, topicName = topicName[1:], topicArticle = topicArticle)
             else:
                 self.render('wikiLOut.html', topicName = topicName[1:], topicArticle = curVersion.content)
 
@@ -259,7 +261,8 @@ class EditPage(Handler):
             topicPages = TopicPage.all().filter('title =', topicName)
             topicList = list(topicPages)
             ver = len(topicList)
-            snippet =  re.sub('[\s]+', ' ', topicArticle)[:100]
+            snippet = topicArticle[:100]
+            snippet =  re.sub('[\s]+', ' ', snippet)
             newVersion = TopicPage(title = topicName, ver= ver, snippet = snippet, content = topicArticle)
             newVersion.put()
             self.redirect(topicName)
