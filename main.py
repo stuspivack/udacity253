@@ -259,7 +259,7 @@ class EditPage(Handler):
             topicPages = TopicPage.all().filter('title =', topicName)
             topicList = list(topicPages)
             ver = len(topicList)
-            snippet = topicArticle.rstrip()[:100]
+            snippet =  re.sub('[\s]+', ' ', topicArticle)[:100]
             newVersion = TopicPage(title = topicName, ver= ver, snippet = snippet, content = topicArticle)
             newVersion.put()
             self.redirect(topicName)
