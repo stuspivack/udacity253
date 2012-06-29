@@ -146,18 +146,19 @@ class Signup(Handler):
 
 class LoginPage(Handler):
     def get(self):
-        self.render('login.html')
+        topicName = self.request.get('ref')
+        self.render('login.html', topicName = topicName)
     def post(self):
         user = self.request.get('username')
         password = self.request.get('password')
         thisUser = Users.all().filter('username =', user).get()
-        # there are get parameters.
+        topicName = self.request.get('title')
         if thisUser:
             if valid_pw(user, password, thisUser.password):
                 userId = str(thisUser.key().id())
                 hashedId = make_secure_val(userId)
                 self.response.headers.add_header('Set-Cookie', 'userId=%s; Path=/' % hashedId)
-                self.redirect("/welcome")
+                self.redirect("/" + topicName)
         self.render("login.html", passError = "Invalid Login")
 
 class LogoutPage(Handler):
@@ -172,24 +173,51 @@ class WikiPage(Handler):
 	# uses wikiLin.html if logged in
 	# passes topicName and topicArticle in both cases
     def get(self, topicName):
-        # pageVersions = TopicPage.all().filter('title =', topicName).get()
-        # hashedId = self.request.cookies.get('userId')
-        # userIdStr = check_secure_val(hashedId)
-        # if check_secure_val(hashedId):
-        #     userId = int(userIdStr)
-        #     aUser = Users.get_by_id(userId)
-        #     self.render('wikiLin.html', user = aUser.username, topicName = )
-        # else:
-        #     self.redirect('/signup')
-        pass
+        ver = self.request.get('ver')
+        hasVer = False
+        if ver:
+            ver = int(ver)
+            hasVer = True
+        if hasVer:
+            curVersion = TopicPage.all().filter('title =', topicName).filter('ver =', ver).get()
+        else:
+            curVersion = TopicPage.all().filter('title =', topicName).order('-created').get()
+        if curVersion == None:
+            self.redirect('/_edit' + topicName)
+        else:
+            hashedId = self.request.cookies.get('userId')
+            userIdStr = check_secure_val(hashedId)
+            topicName = curVersion.title
+            if check_secure_val(hashedId):
+                userId = int(userIdStr)
+                aUser = Users.get_by_id(userId)
+                self.render('wikiLIn.html', user = aUser.username, topicName = topicName[1:], topicArticle = curVersion.content)
+            else:
+                self.render('wikiLOut.html', topicName = topicName[1:], topicArticle = curVersion.content)
 
 class HistoryPage(Handler):
-	# get topicName from url, checks cookie
+	# get topicName from url thingamabob, checks cookie
 	# uses historyLIn.html if logged in
 	# uses historyLOut.html if logged out
 	# pass topicName
 	# pass all the versions to be looped
-	pass
+    def get(self, topicName):
+        hashedId = self.request.cookies.get('userId')
+        userIdStr = check_secure_val(hashedId)
+        topicPages = TopicPage.all().filter('title =', topicName).order('-created').fetch(20)
+        if check_secure_val(hashedId):
+            self.render('historyLIn.html', versions = topicPages, topicName = topicName[1:])
+        else:
+            self.render('historyLOut.html', versions = topicPages, topicName = topicName[1:])
+	# def get(self, topicName):
+ #        # self.response.out.write('history!')
+ #        hashedId = self.request.cookies.get('userId')
+ #        userIdStr = check_secure_val(hashedId)
+ #        topicPages = TopicPage.all().filter('title =', topicName).order('-created').fetch()
+ #        if check_secure_val(hashedId):
+ #            self.render('historyLIn.html', versions = topicPages, topicName = topicName[1:])
+ #        else:
+ #            self.render('historyLOut.html', versions = topicPages, topicName = topicName[1:])
 
 class EditPage(Handler):
 	# get topicName from url
@@ -207,7 +235,8 @@ class EditPage(Handler):
         if check_secure_val(hashedId):
             ver = self.request.get('ver')
             if ver:
-                topicPages = TopicPage.all().filter('ver =', ver,' AND title =', topicName).get()
+                ver = int(ver)
+                topicPages = TopicPage.all().filter('ver =', ver).filter('title =', topicName).get()
             else:
                 topicPages = TopicPage.all().filter('title =', topicName).order('-created').get()
             if topicPages:
@@ -217,8 +246,8 @@ class EditPage(Handler):
             userId = int(userIdStr)
             aUser = Users.get_by_id(userId)
             self.render('editWiki.html', user = aUser.username, topicName = topicName[1:], topicArticle = topicArticle)
-        elif topicPages:
-            self.redirect('/' + topicName[1:])
+        # elif topicPages:
+        #     self.redirect('/' + topicName[1:])
         else:
             self.redirect('/login?ref=' + topicName[1:])
 
@@ -230,10 +259,10 @@ class EditPage(Handler):
             topicPages = TopicPage.all().filter('title =', topicName)
             topicList = list(topicPages)
             ver = len(topicList)
-            snippet = topicArticle[:100]
+            snippet = topicArticle.rstrip()[:100]
             newVersion = TopicPage(title = topicName, ver= ver, snippet = snippet, content = topicArticle)
             newVersion.put()
-            self.redirect('/_edit' + topicName)
+            self.redirect(topicName)
         else:
             self.redirect('/login?ref=' + topicName[1:])
 

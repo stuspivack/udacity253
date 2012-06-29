@@ -10,12 +10,11 @@
 	{{topicName}}
 	{% for version in versions %}
     <div>
-        <div>{{version.created}}</div>
-        <div>{{version.snippet}}</div>
+        {{version.created}} | {{version.snippet}} | 
         <!-- create the view link from the topicName -->
-        <div><a href="/{{topicName}}?ver={{version.ver}}">view</a></div>
+        <a href="/{{topicName}}?ver={{version.ver}}">view</a> | 
         <!-- create an edit link from the topicName -->
-        <div><a href="/_edit/{{topicName}}?ver={{version.ver}}">edit</a> </div>
+        <a href="/_edit/{{topicName}}?ver={{version.ver}}">edit</a>
     </div>
     {% endfor %}
 </body>
